@@ -12,7 +12,7 @@ Example: `d:\buzztest\buzzrequirements`
 ### For Windows:
 
 ```cmd
-set BUZZREQS=-ICLONEDDIR
+set BUZZREQS=CLONEDDIR
 ; for example d:\buzztest\buzzrequirements
 set CGO_CFLAGS=-I%BUZZREQS%\include
 set CGO_CPPFLAGS=-I%BUZZREQS%\include
