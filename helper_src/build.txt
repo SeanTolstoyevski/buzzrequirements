@@ -1,0 +1,10 @@
+Now I don't thing x86 support.
+
+Note:
+do not remember set dll directory with your compiler flags.
+
+dll - G++ - MinGW:
+g++ general.cpp fn_pointer_helper.cpp  -shared -Iinclude -I. -O3 -flto -mavx -msse2 -msse3 -msse4 -Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic openal32.dll -lwinmm -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32  -static-libgcc -static-libstdc++ -Wl,--strip-all -o helper_win_amd64.dll
+
+dll - Clang - VS:
+clang general.cpp fn_pointer_helper.cpp -shared -Iinclude -I. -O3 -mavx -msse2 -msse3 -msse4 -lopenal32 -lwinmm -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32   -o helper_win_amd64.dll
