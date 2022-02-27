@@ -19,6 +19,24 @@ extern "C"
 #endif
 
 
+#define DecoderFlac 1
+#define DecoderMp3 2
+#define DecoderOgg 3
+#define DecoderWav 4
+
+
+expo
+ALenum getFormat(ALuint  channel);
+
+expo
+void setBufferSize(size_t size);
+
+expo
+void setBufferCount(size_t number);
+
+expo
+unsigned char getBufferCount();
+
 // device
 
 expo
@@ -33,6 +51,12 @@ typedef struct Stream
 
 expo
 Stream newStream(int decoder);
+
+expo
+int reopenFromFileStream(Stream* cStream, const char* path, unsigned char decoder);
+
+expo
+int reopenFromMemoryStream(Stream* cStream, const void* data, size_t dataSize, unsigned char decoder);
 
 expo
 int deleteStream(Stream* stream);
@@ -60,6 +84,9 @@ void streamSetLoop(Stream* cStream, int loop);
 
 expo
 int streamGetLoop(Stream* cStream);
+
+expo
+ALuint streamGetSource(Stream* cStream);
 
 expo
 int streamUpdate( Stream* stream);

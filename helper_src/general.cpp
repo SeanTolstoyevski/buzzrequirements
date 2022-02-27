@@ -10,13 +10,19 @@
 #include "stb_vorbis.c"
 #define DR_WAV_IMPLEMENTATION
 #include "dr_wav.h"
+
 #include <vector>
 #include <cstddef>
+#include <thread>
+#include <chrono>
 
 
-size_t BUFFER_SIZE = 2048;
-	size_t BUFFER_NUM = 3;
+using uint8 = unsigned char;
 
+size_t BUFFER_SIZE = 8192;
+uint8 BUFFER_NUM = 4;
+
+expo
 ALenum getFormat(ALuint  channel)
 {
 	ALenum format = 0;
@@ -33,6 +39,7 @@ ALenum getFormat(ALuint  channel)
 }
 
 // setBufferSize sets the size of memory to be allocated for the buffer.
+expo
 void setBufferSize(size_t size)
 {
 	if(size < 2048 || size > 65536)
@@ -40,10 +47,11 @@ void setBufferSize(size_t size)
 		BUFFER_SIZE = 2048;
 		return;
 	}
-			BUFFER_SIZE = size;
+		BUFFER_SIZE = size;
 }
 
-void setBufferCount(size_t number)
+expo
+void setBufferCount(uint8 number)
 {
 	if(number < 3)
 	{
@@ -53,7 +61,8 @@ void setBufferCount(size_t number)
 	BUFFER_NUM = number;
 }
 
-size_t getBufferCount()
+expo
+uint8 getBufferCount()
 {
 	return BUFFER_NUM;
 }
@@ -65,21 +74,21 @@ size_t getBufferSize()
 
 namespace stream
 {
-enum DecoderType {
+enum DecoderType : uint8 {
 	FLAC = 1,
 	MP3,
 	OGG,
 	WAV,
 };
 
-typedef struct StreamInfo
+struct StreamInfo
 {
-	ALuint channels;
-	ALuint sampleRate;
+	ALuint channels = 0;
+	ALuint sampleRate = 0;
 	//stream->info.bitsPerSample;
-} StreamInfo;
+};
 
-typedef struct StreamDecoders
+struct StreamDecoders
 {
 	DecoderType decoder;
 		drflac* flacStream;
@@ -87,9 +96,9 @@ typedef struct StreamDecoders
 	stb_vorbis *oggStream;
 	stb_vorbis_info oggInfo;
 	drwav wavStream;
-} StreamDecoders;
+};
 
-typedef struct  AudioStream
+struct  AudioStream
 {
 	ALuint source;
 	ALuint *buffers = new ALuint[getBufferCount()];
@@ -102,8 +111,13 @@ typedef struct  AudioStream
 
 	bool init();
 	bool uninit();
+
+bool reopenFromFile(const char* path, DecoderType decoder);
+	bool reopenFromMemory(const void* data, size_t dataSize, DecoderType decoder);
+
 	bool openFromFile(const char *filePath);
 	bool openFromMemory(const void *data, size_t size);
+
 	size_t fillBuffers();
 	void setLoop(bool  loop);
 	bool getLoop();
@@ -113,11 +127,11 @@ typedef struct  AudioStream
 	bool pause();
 	bool update();
 
-} AudioStream;
+};
 
 bool AudioStream::init()
 {
-	std::size_t successBufferNumber = 0;
+	uint8 successBufferNumber = 0;
 	alSourceRewind(source);
 	for(; successBufferNumber < getBufferCount(); ++successBufferNumber) {
 		size_t readCount = fillBuffers() * info.channels;
@@ -133,28 +147,84 @@ bool AudioStream::uninit()
 {
 	if(audioDecoder.decoder == 0)
 		return false;
+	if(alIsSource(source))
+		alSourceStop(source);
+	format = 0;
+	info.channels = 0;
+	info.sampleRate = 0;
+	inited = false;
 	switch(audioDecoder.decoder)
 	{
 	case DecoderType::FLAC:
 		drflac_close(audioDecoder.flacStream);
-		return true;
+		break;
 	case DecoderType::MP3:
 		drmp3_uninit(&audioDecoder.mp3Stream);
-		return true;
+		break;
 	case DecoderType::OGG:
 		stb_vorbis_close(audioDecoder.oggStream);
 		audioDecoder.oggStream = NULL;
-		return true;
+		break;
 	case DecoderType::WAV:
 		drwav_uninit(&audioDecoder.wavStream);
-		return true;
-	default: return false;
+		break;
 	}
+	auto tempBuffs = new ALuint[getBufferCount()];
+	alSourceUnqueueBuffers(source, getBufferCount(), &tempBuffs[0]);
+	delete []tempBuffs;
+	memBuf.clear();
+	return true;
+}
+
+bool AudioStream::reopenFromFile(const char* path, DecoderType decoder)
+{
+	if(decoder == 0 || path == nullptr)
+		return false;
+
+	ALint oldState = 0;
+	alGetSourcei(source, AL_SOURCE_STATE, &oldState);
+	auto res = uninit();
+	if(!res)
+		return false;
+	audioDecoder.decoder = decoder;
+	res = openFromFile(path);
+	if(!res)
+		return false;
+
+	if(oldState != 0) {
+		if(oldState == AL_PLAYING)
+			play();
+		if(oldState == AL_STOPPED)
+			alSourceStop(source);
+	}
+	return true;
+}
+
+bool AudioStream::reopenFromMemory(const void* data, size_t dataSize, DecoderType decoder)
+{
+	if(decoder == 0 || dataSize < 1 || data == nullptr)
+		return false;
+	ALint oldState = 0;
+	alGetSourcei(source, AL_SOURCE_STATE, &oldState);
+	auto res = uninit();
+	if(!res)
+		return false;
+	audioDecoder.decoder = decoder;
+	res = openFromMemory(data, dataSize);
+	if(!res)
+		return false;
+	if(oldState != 0) {
+		if(oldState == AL_PLAYING)
+			play();
+		if(oldState == AL_STOPPED)
+			alSourceStop(source);
+	}
+	return true;
 }
 
 bool AudioStream::openFromFile(const char *filePath)
 {
-	if (filePath == NULL) {
+	if (filePath == nullptr) {
 		return false;
 	}
 	switch (audioDecoder.decoder)
@@ -202,7 +272,7 @@ bool AudioStream::openFromFile(const char *filePath)
 
 bool AudioStream::openFromMemory(const void *data, size_t size)
 {
-	if(size < 1 || data == NULL)
+	if(size < 1 || data == nullptr)
 		return false;
 	switch (audioDecoder.decoder) {
 	case DecoderType::FLAC:
@@ -270,7 +340,6 @@ bool AudioStream::getLoop()
 {
 	return loop;
 }
-
 
 void AudioStream::setLoop(bool loop)
 {
@@ -376,7 +445,6 @@ bool AudioStream::update()
 	return true;
 }
 
-
 }
 
 
@@ -403,7 +471,6 @@ bool destroyStream(stream::AudioStream* aStream)
 			alDeleteBuffers(1, &aStream->buffers[bufferID]);
 	}
 	if(!aStream->memBuf.empty()) {
-		aStream->memBuf.clear();
 		aStream->memBuf.resize(0);
 	}
 		delete []aStream->buffers;
@@ -671,32 +738,75 @@ Stream newStream(int decoder)
 	return cs;
 }
 
+
+expo
+int reopenFromFileStream(Stream* cStream, const char* path, unsigned char decoder)
+{
+	if(cStream == nullptr)
+		return -2;
+	if(decoder == 0)
+		return -1;
+	if(path == nullptr)
+		return -3;
+	auto s = static_cast<stream::AudioStream*>(cStream->stream);
+	return s->reopenFromFile(path, (stream::DecoderType)decoder);
+}
+
+expo
+int reopenFromMemoryStream(Stream* cStream, const void* data, size_t dataSize, unsigned char decoder)
+{
+	if(cStream == nullptr)
+		return -2;
+	if(decoder == 0)
+		return -1;
+	if(data == nullptr)
+		return -3;
+	if(dataSize < 1)
+		return -4;
+	auto s = static_cast<stream::AudioStream*>(cStream->stream);
+	return s->reopenFromMemory(data, dataSize, (stream::DecoderType)decoder);
+}
+
 expo
 int deleteStream(Stream* cStream)
 {
+	if(cStream == nullptr)
+		return -2;
 	auto s = static_cast<stream::AudioStream*>(cStream->stream);
 	auto retVal = destroyStream(s);
-	cStream->stream = NULL;
+	cStream->stream = nullptr;
 	return retVal;
 }
 
 expo
-int openStreamFromFile(Stream* cStream, const char* filePath)
+int openStreamFromFile(Stream* cStream, const char* path)
 {
+	if(cStream == nullptr)
+		return -2;
+	if(path == nullptr)
+		return -3;
 	auto s = static_cast<stream::AudioStream*>(cStream->stream);
-	return s->openFromFile(filePath);
+	return s->openFromFile(path);
 }
 
 expo
-int openStreamFromMemory(Stream* cStream, const void *data, size_t size)
+int openStreamFromMemory(Stream* cStream, const void *data, size_t dataSize)
 {
+	if(cStream == nullptr)
+		return -2;
+	if(data == nullptr)
+		return -3;
+	if(dataSize < 1)
+		return -4;
 	auto s = static_cast<stream::AudioStream*>(cStream->stream);
-	return s->openFromMemory(data, size);
+	return s->openFromMemory(data, dataSize);
 }
 
 expo
 int streamPlay(Stream* cStream)
 {
+	if(cStream == nullptr)
+		return -2;
 	auto s = static_cast<stream::AudioStream*>(cStream->stream);
 	return s->play();
 }
@@ -704,6 +814,8 @@ int streamPlay(Stream* cStream)
 expo
 int streamPause(Stream* cStream)
 {
+	if(cStream == nullptr)
+		return -2;
 	auto s = static_cast<stream::AudioStream*>(cStream->stream);
 	return s->pause();
 }
@@ -711,6 +823,8 @@ int streamPause(Stream* cStream)
 expo
 int streamStop(Stream* cStream)
 {
+	if(cStream == nullptr)
+		return -2;
 	auto s = static_cast<stream::AudioStream*>(cStream->stream);
 	return s->stop();
 }
@@ -718,6 +832,8 @@ int streamStop(Stream* cStream)
 expo
 void streamSetLoop(Stream* cStream, int loop)
 {
+	if(cStream == nullptr)
+		return;
 	auto s = static_cast<stream::AudioStream*>(cStream->stream);
 	s->setLoop(loop);
 }
@@ -725,13 +841,26 @@ void streamSetLoop(Stream* cStream, int loop)
 expo
 int streamGetLoop(Stream* cStream)
 {
+	if(cStream == nullptr)
+		return -2;
 	auto s = static_cast<stream::AudioStream*>(cStream->stream);
 	return s->getLoop();
 }
 
 expo
+ALuint streamGetSource(Stream* cStream)
+{
+	if(cStream == nullptr)
+		return 0;
+	auto s = static_cast<stream::AudioStream*>(cStream->stream);
+	return s->source;
+}
+
+expo
 int streamSeek(Stream* cStream, size_t millisecond)
 {
+	if(cStream == nullptr)
+		return -2;
 	auto s = static_cast<stream::AudioStream*>(cStream->stream);
 	return s->seek(millisecond);
 }
@@ -739,6 +868,9 @@ int streamSeek(Stream* cStream, size_t millisecond)
 expo
 int streamUpdate(Stream* cStream)
 {
+	if(cStream == nullptr)
+		return -2;
 	auto s = static_cast<stream::AudioStream*>(cStream->stream);
 	return s->update();
 }
+
